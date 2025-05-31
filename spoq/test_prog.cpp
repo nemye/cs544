@@ -40,18 +40,6 @@ Storage Provider" -KeyExportPolicy Exportable
 --*/
 
 #define _CRT_SECURE_NO_WARNINGS 1
-
-#define QUIC_API_ENABLE_PREVIEW_FEATURES 1
-
-#ifdef _WIN32
-//
-// The conformant preprocessor along with the newest SDK throws this warning for
-// a macro in C mode. As users might run into this exact bug, exclude this
-// warning here. This is not an MsQuic bug but a Windows SDK bug.
-//
-#pragma warning(disable : 5105)
-#include <share.h>
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -130,10 +118,6 @@ void PrintUsage() {
       "\n"
       "  quicsample.exe -client -unsecure -target:{IPAddress|Hostname} "
       "[-ticket:<ticket>]\n"
-#ifdef QUIC_API_ENABLE_PREVIEW_FEATURES
-      "  quicsample.exe -multiclient -count:<N> -unsecure "
-      "-target:{IPAddress|Hostname}\n"
-#endif
       "  quicsample.exe -server -cert_hash:<...>\n"
       "  quicsample.exe -server -cert_file:<...> -key_file:<...> "
       "[-password:<...>]\n");
@@ -612,6 +596,8 @@ void RunServer(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
   //
   printf("Press Enter to exit.\n\n");
   (void)getchar();
+
+  shutdown();
 }
 
 //
@@ -728,6 +714,8 @@ void ClientSend(_In_ HQUIC Connection) {
     free(SendBufferRaw);
     shutdown();
   }
+
+  shutdown();
 }
 
 //
@@ -888,7 +876,7 @@ void RunClient(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
                                                   ClientConnectionCallback,
                                                   NULL, &Connection))) {
     printf("ConnectionOpen failed, 0x%x!\n", Status);
-    shutdown();
+    
   }
 
   if ((ResumptionTicketString = GetValue(argc, argv, "ticket")) != NULL) {
@@ -938,9 +926,12 @@ void RunClient(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
     printf("ConnectionStart failed, 0x%x!\n", Status);
     shutdown();
   }
+
+  shutdown();
 }
 
-int main(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
+int QUIC_MAIN_EXPORT main(_In_ int argc,
+                          _In_reads_(argc) _Null_terminated_ char* argv[]) {
   QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
 
   auto shutdown = [&]() {
@@ -988,5 +979,6 @@ int main(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
     PrintUsage();
   }
 
+  shutdown();
   return (int)Status;
 }

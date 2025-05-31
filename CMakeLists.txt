@@ -56,15 +56,10 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${WARNING_STRING}")
 #--------------------------------------------------------------------------------------------------
 
 # Project specific subdirectories and includes below this point
-
-# Add msquic include path
-include_directories(msquic/src/inc)
-
 # Link against msquic static library
 link_directories(msquic/artifacts/bin/linux/x64_Release_quictls)
 
 # Set subdirectories with more CMakeLists.txt
-add_subdirectory(io)
 add_subdirectory(spoq)
 
 # Set installation directory

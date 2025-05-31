@@ -15,4 +15,10 @@ if [ -d "bin" ]; then
     rm -r bin
 fi
 
+# Remove bin directory
+if [ -d "lib" ]; then
+    echo "Removing lib directory..."
+    rm -r lib
+fi
+
 echo "Clean completed."
