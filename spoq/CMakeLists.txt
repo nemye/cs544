@@ -1,10 +1,26 @@
-set(SPOQ_SRC
-    test_prog.cpp
+set(SPOQ_CLIENT_SRC
+    src/spoq_client.cpp
 )
 
-add_executable(test_prog ${SPOQ_SRC})
-target_include_directories(test_prog PRIVATE ${CMAKE_SOURCE_DIR}/msquic/src/inc)
-target_link_libraries(test_prog PRIVATE 
+set(SPOQ_SERVER_SRC
+    src/spoq_server.cpp
+)
+
+add_executable(spoq_client ${SPOQ_CLIENT_SRC})
+target_include_directories(spoq_client PRIVATE ${CMAKE_SOURCE_DIR}/msquic/src/inc ${CMAKE_SOURCE_DIR}/spoq/inc)
+target_link_libraries(spoq_client PRIVATE 
+    ${CMAKE_SOURCE_DIR}/msquic/artifacts/bin/linux/x64_Release_quictls/libmsquic.a
+    numa
+    ssl
+    crypto
+    atomic
+    pthread
+)
+
+
+add_executable(spoq_server ${SPOQ_SERVER_SRC})
+target_include_directories(spoq_server PRIVATE ${CMAKE_SOURCE_DIR}/msquic/src/inc ${CMAKE_SOURCE_DIR}/spoq/inc)
+target_link_libraries(spoq_server PRIVATE 
     ${CMAKE_SOURCE_DIR}/msquic/artifacts/bin/linux/x64_Release_quictls/libmsquic.a
     numa
     ssl
@@ -14,4 +30,4 @@ target_link_libraries(test_prog PRIVATE
 )
 
 # Install the executable
-install(TARGETS test_prog DESTINATION ${INSTALL_DIR})
+install(TARGETS spoq_client spoq_server DESTINATION ${INSTALL_DIR})
