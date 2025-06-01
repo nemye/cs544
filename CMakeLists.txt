@@ -44,8 +44,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${WARNING_STRING}")
 # Project specific subdirectories and includes below this point
 #--------------------------------------------------------------------------------------------------
 
-# Link against msquic static library
-link_directories(msquic/artifacts/bin/linux/x64_Release_quictls)
+# Specify root directory to link against msquic (static) library
+set(MSQUIC_DIR ${CMAKE_SOURCE_DIR}/msquic)
 
 # Set subdirectories with more CMakeLists.txt
 add_subdirectory(spoq)

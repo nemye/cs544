@@ -5,9 +5,9 @@
 
 Abstract:
 
-    Demo client application for the Sensor Protocol Over QUIC (SPQO). See the README.MD
-    at the top level for build and run instructions.
-    
+    Demo client application for the Sensor Protocol Over QUIC (SPQO). See the
+README.MD at the top level for build and run instructions.
+
     Built upon msquic "sample" application.
 
 --*/
@@ -15,125 +15,127 @@ Abstract:
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "msquic.h"
-#include "utils.h"
-#include "quic_config.h"
+#include <iostream>
+#include <string>
 
-//
+#include "msquic.h"
+#include "quic_config.h"
+#include "utils.h"
+
 // The (optional) registration configuration for the app. This sets a name for
 // the app (used for persistent storage and for debugging). It also configures
 // the execution profile, using the default "low latency" profile.
-//
 const QUIC_REGISTRATION_CONFIG RegConfig = {"spoq_server",
                                             QUIC_EXECUTION_PROFILE_LOW_LATENCY};
 
-//
 // The protocol name used in the Application Layer Protocol Negotiation (ALPN).
-//
 const QUIC_BUFFER Alpn = {sizeof("sample") - 1, (uint8_t*)"sample"};
 
-//
 // The QUIC handle to the registration object. This is the top level API object
 // that represents the execution context for all work done by MsQuic on behalf
 // of the app.
-//
 HQUIC Registration;
 
-//
 // The QUIC handle to the configuration object. This object abstracts the
 // connection configuration. This includes TLS configuration and any other
 // QUIC layer settings.
-//
 HQUIC Configuration;
 
+uint32_t MessageCount = 0;
+constexpr uint32_t MAX_MESSAGE_COUNT = 100;
+
 void PrintUsage() {
-  printf(
-      "\n"
-      "quicsample runs a simple client or server.\n"
-      "\n"
-      "Usage:\n"
-      "\n"
-      "  quicsample.exe -server -cert_hash:<...>\n"
-      "  quicsample.exe -server -cert_file:<...> -key_file:<...> "
-      "[-password:<...>]\n");
+  std::cout << "\n"
+               "quicsample runs a simple client or server.\n"
+               "\n"
+               "Usage:\n"
+               "\n"
+               "  quicsample.exe -server -cert_hash:<...>\n"
+               "  quicsample.exe -server -cert_file:<...> -key_file:<...> "
+               "[-password:<...>]\n";
 }
 
-//
-// Allocates and sends some data over a QUIC stream.
-//
+// Allocates and sends some NDJSON data over a QUIC stream.
 void ServerSend(_In_ HQUIC Stream) {
-  //
-  // Allocates and builds the buffer to send over the stream.
-  //
-  void* SendBufferRaw = malloc(sizeof(QUIC_BUFFER) + SendBufferLength);
-  if (SendBufferRaw == NULL) {
-    printf("SendBuffer allocation failed!\n");
-    MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
-    return;
-  }
-  QUIC_BUFFER* SendBuffer = (QUIC_BUFFER*)SendBufferRaw;
-  SendBuffer->Buffer = (uint8_t*)SendBufferRaw + sizeof(QUIC_BUFFER);
-  SendBuffer->Length = SendBufferLength;
+  while (MessageCount < MAX_MESSAGE_COUNT) {
+    // Variable-size JSON: simulate size variation with random padding
+    const int padding = rand() % 20;  // random 0–19 extra spaces
 
-  printf("[strm][%p] Sending data...\n", Stream);
+    // Allocate buffer: QUIC_BUFFER + payload
+    void* SendBufferRaw = malloc(sizeof(QUIC_BUFFER) + 64);
+    if (SendBufferRaw == NULL) {
+      std::cout
+          << "SendBuffer allocation failed for message << MessageCount << !\n";
+      MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+      return;
+    }
 
-  //
-  // Sends the buffer over the stream. Note the FIN flag is passed along with
-  // the buffer. This indicates this is the last buffer on the stream and the
-  // the stream is shut down (in the send direction) immediately after.
-  //
-  QUIC_STATUS Status;
-  if (QUIC_FAILED(Status = MsQuic->StreamSend(
-                      Stream, SendBuffer, 1, QUIC_SEND_FLAG_FIN, SendBuffer))) {
-    printf("StreamSend failed, 0x%x!\n", Status);
-    free(SendBufferRaw);
-    MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+    QUIC_BUFFER* SendBuffer = (QUIC_BUFFER*)SendBufferRaw;
+    SendBuffer->Buffer = (uint8_t*)SendBufferRaw + sizeof(QUIC_BUFFER);
+
+    // Write variable length NDJSON message to the buffer
+    int len = snprintf((char*)SendBuffer->Buffer, 64, "{\"msg\": %u}%*s\n",
+                       MessageCount, padding, "x");
+    SendBuffer->Length = (uint32_t)len;
+
+    // Send the message, but only set QUIC_SEND_FLAG_FIN on the last one
+    QUIC_SEND_FLAGS flags = (MessageCount == MessageCount - 1)
+                                ? QUIC_SEND_FLAG_FIN
+                                : QUIC_SEND_FLAG_NONE;
+
+    QUIC_STATUS Status =
+        MsQuic->StreamSend(Stream, SendBuffer, 1, flags, SendBufferRaw);
+    // Note SendBufferRaw is freed in QUIC_STREAM_EVENT_SEND_COMPLETE case
+
+    if (QUIC_FAILED(Status)) {
+      std::cout << "[" << Stream << "] StreamSend failed at message "
+                << MessageCount << ", " << Status << "!\n ";
+      free(SendBufferRaw);
+      MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+      return;
+    }
+
+    ++MessageCount;
   }
 }
 
-//
 // The server's callback for stream events from MsQuic.
-//
 _IRQL_requires_max_(DISPATCH_LEVEL)
     _Function_class_(QUIC_STREAM_CALLBACK) QUIC_STATUS QUIC_API
     ServerStreamCallback(_In_ HQUIC Stream, _In_opt_ void* Context,
                          _Inout_ QUIC_STREAM_EVENT* Event) {
   UNREFERENCED_PARAMETER(Context);
+  std::cout << "[" << Stream
+            << "] Stream event: " << QuicStreamEventTypeToString(Event->Type)
+            << "\n";
   switch (Event->Type) {
-    case QUIC_STREAM_EVENT_SEND_COMPLETE:
-      //
-      // A previous StreamSend call has completed, and the context is being
-      // returned back to the app.
-      //
-      free(Event->SEND_COMPLETE.ClientContext);
-      printf("[strm][%p] Data sent\n", Stream);
+    case QUIC_STREAM_EVENT_SEND_COMPLETE: {
+      auto sendBuffer =
+          static_cast<QUIC_BUFFER*>(Event->SEND_COMPLETE.ClientContext);
+      if (sendBuffer) {
+        std::string message(reinterpret_cast<const char*>(sendBuffer->Buffer),
+                            sendBuffer->Length);
+        std::cout << "[" << Stream << "] Stream event: Data sent: " << message;
+
+        // Free the original sendBuffer memory
+        free(sendBuffer);
+      } else {
+        std::cout << "[" << Stream << "] Stream event: Message send error!)\n";
+      }
       break;
+    }
     case QUIC_STREAM_EVENT_RECEIVE:
-      //
       // Data was received from the peer on the stream.
-      //
-      printf("[strm][%p] Data received\n", Stream);
       break;
     case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
-      //
-      // The peer gracefully shut down its send direction of the stream.
-      //
-      printf("[strm][%p] Peer shut down\n", Stream);
-      ServerSend(Stream);
       break;
     case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
-      //
       // The peer aborted its send direction of the stream.
-      //
-      printf("[strm][%p] Peer aborted\n", Stream);
       MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
       break;
     case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
-      //
       // Both directions of the stream have been shut down and MsQuic is done
       // with the stream. It can now be safely cleaned up.
-      //
-      printf("[strm][%p] All done\n", Stream);
       MsQuic->StreamClose(Stream);
       break;
     default:
@@ -142,67 +144,57 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
   return QUIC_STATUS_SUCCESS;
 }
 
-//
 // The server's callback for connection events from MsQuic.
-//
 _IRQL_requires_max_(DISPATCH_LEVEL)
     _Function_class_(QUIC_CONNECTION_CALLBACK) QUIC_STATUS QUIC_API
     ServerConnectionCallback(_In_ HQUIC Connection, _In_opt_ void* Context,
                              _Inout_ QUIC_CONNECTION_EVENT* Event) {
   UNREFERENCED_PARAMETER(Context);
+  std::cout << "[" << Connection << "] Connection event: "
+            << QuicConnectionEventTypeToString(Event->Type) << "\n";
   switch (Event->Type) {
     case QUIC_CONNECTION_EVENT_CONNECTED:
-      //
       // The handshake has completed for the connection.
-      //
-      printf("[conn][%p] Connected\n", Connection);
       MsQuic->ConnectionSendResumptionTicket(
           Connection, QUIC_SEND_RESUMPTION_FLAG_NONE, 0, NULL);
       break;
     case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
-      //
       // The connection has been shut down by the transport. Generally, this
       // is the expected way for the connection to shut down with this
       // protocol, since we let idle timeout kill the connection.
-      //
       if (Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status ==
           QUIC_STATUS_CONNECTION_IDLE) {
-        printf("[conn][%p] Successfully shut down on idle.\n", Connection);
+        std::cout << "[" << Connection
+                  << "] Connection event: Successfully shut down on idle.\n";
       } else {
-        printf("[conn][%p] Shut down by transport, 0x%x\n", Connection,
-               Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status);
+        std::cout << "[" << Connection
+                  << "] Connection event: Shut down by transport, 0x"
+                  << std::hex << Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status
+                  << std::dec << "\n";
       }
       break;
     case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
-      //
       // The connection was explicitly shut down by the peer.
-      //
-      printf("[conn][%p] Shut down by peer, 0x%llu\n", Connection,
-             (unsigned long long)Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode);
+      std::cout << "[" << Connection
+                << "] Connection event: Shut down by peer, 0x" << std::hex
+                << (unsigned long long)
+                       Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode
+                << std::dec << "\n";
       break;
     case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
-      //
       // The connection has completed the shutdown process and is ready to be
       // safely cleaned up.
-      //
-      printf("[conn][%p] All done\n", Connection);
       MsQuic->ConnectionClose(Connection);
       break;
     case QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED:
-      //
-      // The peer has started/created a new stream. The app MUST set the
-      // callback handler before returning.
-      //
-      printf("[strm][%p] Peer started\n", Event->PEER_STREAM_STARTED.Stream);
+      // The peer has started/created a new stream. Begin sending data
       MsQuic->SetCallbackHandler(Event->PEER_STREAM_STARTED.Stream,
                                  (void*)ServerStreamCallback, NULL);
+      ServerSend(Event->PEER_STREAM_STARTED.Stream);
       break;
     case QUIC_CONNECTION_EVENT_RESUMED:
-      //
       // The connection succeeded in doing a TLS resumption of a previous
       // connection's session.
-      //
-      printf("[conn][%p] Connection resumed!\n", Connection);
       break;
     default:
       break;
@@ -210,9 +202,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
   return QUIC_STATUS_SUCCESS;
 }
 
-//
 // The server's callback for listener events from MsQuic.
-//
 _IRQL_requires_max_(PASSIVE_LEVEL)
     _Function_class_(QUIC_LISTENER_CALLBACK) QUIC_STATUS QUIC_API
     ServerListenerCallback(_In_ HQUIC Listener, _In_opt_ void* Context,
@@ -222,11 +212,9 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
   QUIC_STATUS Status = QUIC_STATUS_NOT_SUPPORTED;
   switch (Event->Type) {
     case QUIC_LISTENER_EVENT_NEW_CONNECTION:
-      //
       // A new connection is being attempted by a client. For the handshake to
       // proceed, the server must provide a configuration for QUIC to use. The
       // app MUST set the callback handler before returning.
-      //
       MsQuic->SetCallbackHandler(Event->NEW_CONNECTION.Connection,
                                  (void*)ServerConnectionCallback, NULL);
       Status = MsQuic->ConnectionSetConfiguration(
@@ -248,30 +236,22 @@ typedef struct QUIC_CREDENTIAL_CONFIG_HELPER {
   };
 } QUIC_CREDENTIAL_CONFIG_HELPER;
 
-//
 // Helper function to load a server configuration. Uses the command line
 // arguments to load the credential part of the configuration.
-//
 BOOLEAN
 ServerLoadConfiguration(_In_ int argc,
                         _In_reads_(argc) _Null_terminated_ char* argv[]) {
   QUIC_SETTINGS Settings = {0};
-  //
   // Configures the server's idle timeout.
-  //
   Settings.IdleTimeoutMs = IdleTimeoutMs;
   Settings.IsSet.IdleTimeoutMs = TRUE;
-  //
   // Configures the server's resumption level to allow for resumption and
   // 0-RTT.
-  //
   Settings.ServerResumptionLevel = QUIC_SERVER_RESUME_AND_ZERORTT;
   Settings.IsSet.ServerResumptionLevel = TRUE;
-  //
   // Configures the server's settings to allow for the peer to open a single
   // bidirectional stream. By default connections are not configured to allow
   // any streams from the peer.
-  //
   Settings.PeerBidiStreamCount = 1;
   Settings.IsSet.PeerBidiStreamCount = TRUE;
 
@@ -282,10 +262,8 @@ ServerLoadConfiguration(_In_ int argc,
   const char* Cert;
   const char* KeyFile;
   if ((Cert = GetValue(argc, argv, "cert_hash")) != NULL) {
-    //
     // Load the server's certificate from the default certificate store,
     // using the provided certificate hash.
-    //
     uint32_t CertHashLen = DecodeHexBuffer(
         Cert, sizeof(Config.CertHash.ShaHash), Config.CertHash.ShaHash);
     if (CertHashLen != sizeof(Config.CertHash.ShaHash)) {
@@ -296,9 +274,7 @@ ServerLoadConfiguration(_In_ int argc,
 
   } else if ((Cert = GetValue(argc, argv, "cert_file")) != NULL &&
              (KeyFile = GetValue(argc, argv, "key_file")) != NULL) {
-    //
     // Loads the server's certificate from the file.
-    //
     const char* Password = GetValue(argc, argv, "password");
     if (Password != NULL) {
       Config.CertFileProtected.CertificateFile = (char*)Cert;
@@ -314,39 +290,35 @@ ServerLoadConfiguration(_In_ int argc,
     }
 
   } else {
-    printf(
-        "Must specify ['-cert_hash'] or ['cert_file' and 'key_file' (and "
-        "optionally 'password')]!\n");
+    std::cout
+        << "Must specify ['-cert_hash'] or ['cert_file' and 'key_file' (and "
+           "optionally 'password')]!\n";
     return FALSE;
   }
 
-  //
   // Allocate/initialize the configuration object, with the configured ALPN
   // and settings.
-  //
   QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
   if (QUIC_FAILED(Status = MsQuic->ConfigurationOpen(
                       Registration, &Alpn, 1, &Settings, sizeof(Settings), NULL,
                       &Configuration))) {
-    printf("ConfigurationOpen failed, 0x%x!\n", Status);
+    std::cout << "ConfigurationOpen failed, 0x" << std::hex << Status
+              << std::dec << " !\n ";
     return FALSE;
   }
 
-  //
   // Loads the TLS credential part of the configuration.
-  //
   if (QUIC_FAILED(Status = MsQuic->ConfigurationLoadCredential(
                       Configuration, &Config.CredConfig))) {
-    printf("ConfigurationLoadCredential failed, 0x%x!\n", Status);
+    std::cout << "ConfigurationLoadCredential failed, 0x" << std::hex << Status
+              << std::dec << "!\n";
     return FALSE;
   }
 
   return TRUE;
 }
 
-//
 // Runs the server side of the protocol.
-//
 void RunServer(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
   QUIC_STATUS Status;
   HQUIC Listener = NULL;
@@ -357,97 +329,38 @@ void RunServer(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
     }
   };
 
-  //
   // Configures the address used for the listener to listen on all IP
   // addresses and the given UDP port.
-  //
   QUIC_ADDR Address = {0};
   QuicAddrSetFamily(&Address, QUIC_ADDRESS_FAMILY_UNSPEC);
   QuicAddrSetPort(&Address, UdpPort);
 
-  //
   // Load the server configuration based on the command line.
-  //
   if (!ServerLoadConfiguration(argc, argv)) {
     return;
   }
 
-  //
   // Create/allocate a new listener object.
-  //
   if (QUIC_FAILED(Status = MsQuic->ListenerOpen(
                       Registration, ServerListenerCallback, NULL, &Listener))) {
-    printf("ListenerOpen failed, 0x%x!\n", Status);
+    std::cout << "ListenerOpen failed, 0x" << std::hex << Status << std::dec
+              << "!\n";
     shutdown();
   }
 
-  //
   // Starts listening for incoming connections.
-  //
   if (QUIC_FAILED(Status =
                       MsQuic->ListenerStart(Listener, &Alpn, 1, &Address))) {
-    printf("ListenerStart failed, 0x%x!\n", Status);
+    std::cout << "ListenerStart failed, 0x" << std::hex << Status << std::dec
+              << "!\n";
     shutdown();
   }
 
-  //
   // Continue listening for connections until the Enter key is pressed.
-  //
-  printf("Press Enter to exit.\n\n");
+  std::cout << "Press Enter to exit.\n\n";
   (void)getchar();
 
   shutdown();
-}
-
-//
-// The clients's callback for stream events from MsQuic.
-//
-_IRQL_requires_max_(DISPATCH_LEVEL)
-    _Function_class_(QUIC_STREAM_CALLBACK) QUIC_STATUS QUIC_API
-    ClientStreamCallback(_In_ HQUIC Stream, _In_opt_ void* Context,
-                         _Inout_ QUIC_STREAM_EVENT* Event) {
-  UNREFERENCED_PARAMETER(Context);
-  switch (Event->Type) {
-    case QUIC_STREAM_EVENT_SEND_COMPLETE:
-      //
-      // A previous StreamSend call has completed, and the context is being
-      // returned back to the app.
-      //
-      free(Event->SEND_COMPLETE.ClientContext);
-      printf("[strm][%p] Data sent\n", Stream);
-      break;
-    case QUIC_STREAM_EVENT_RECEIVE:
-      //
-      // Data was received from the peer on the stream.
-      //
-      printf("[strm][%p] Data received\n", Stream);
-      break;
-    case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
-      //
-      // The peer gracefully shut down its send direction of the stream.
-      //
-      printf("[strm][%p] Peer aborted\n", Stream);
-      break;
-    case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
-      //
-      // The peer aborted its send direction of the stream.
-      //
-      printf("[strm][%p] Peer shut down\n", Stream);
-      break;
-    case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
-      //
-      // Both directions of the stream have been shut down and MsQuic is done
-      // with the stream. It can now be safely cleaned up.
-      //
-      printf("[strm][%p] All done\n", Stream);
-      if (!Event->SHUTDOWN_COMPLETE.AppCloseInProgress) {
-        MsQuic->StreamClose(Stream);
-      }
-      break;
-    default:
-      break;
-  }
-  return QUIC_STATUS_SUCCESS;
 }
 
 int QUIC_MAIN_EXPORT main(_In_ int argc,
@@ -460,31 +373,27 @@ int QUIC_MAIN_EXPORT main(_In_ int argc,
         MsQuic->ConfigurationClose(Configuration);
       }
       if (Registration != NULL) {
-        //
         // This will block until all outstanding child objects have been
         // closed.
-        //
         MsQuic->RegistrationClose(Registration);
       }
       MsQuicClose(MsQuic);
     }
   };
 
-  //
   // Open a handle to the library and get the API function table.
-  //
   if (QUIC_FAILED(Status = MsQuicOpen2(&MsQuic))) {
-    printf("MsQuicOpen2 failed, 0x%x!\n", Status);
+    std::cout << "MsQuicOpen2 failed, 0x" << std::hex << Status << std::dec
+              << "!\n";
     shutdown();
     return (int)Status;
   }
 
-  //
   // Create a registration for the app's connections.
-  //
   if (QUIC_FAILED(Status =
                       MsQuic->RegistrationOpen(&RegConfig, &Registration))) {
-    printf("RegistrationOpen failed, 0x%x!\n", Status);
+    std::cout << "RegistrationOpen failed, 0x" << std::hex << Status << std::dec
+              << "!\n";
     shutdown();
     return (int)Status;
   }

@@ -17,11 +17,10 @@ target_link_libraries(spoq_client PRIVATE
     pthread
 )
 
-
 add_executable(spoq_server ${SPOQ_SERVER_SRC})
-target_include_directories(spoq_server PRIVATE ${CMAKE_SOURCE_DIR}/msquic/src/inc ${CMAKE_SOURCE_DIR}/spoq/inc)
+target_include_directories(spoq_server PRIVATE ${MSQUIC_DIR}/src/inc ${CMAKE_SOURCE_DIR}/spoq/inc)
 target_link_libraries(spoq_server PRIVATE 
-    ${CMAKE_SOURCE_DIR}/msquic/artifacts/bin/linux/x64_Release_quictls/libmsquic.a
+    ${MSQUIC_DIR}/artifacts/bin/linux/x64_Release_quictls/libmsquic.a
     numa
     ssl
     crypto

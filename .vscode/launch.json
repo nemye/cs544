@@ -5,13 +5,37 @@
     "version": "0.2.0",
     "configurations": [
     {
-        "name": "debug test_prog",
+        "name": "debug-client",
         "type": "cppdbg",
         "request": "launch",
         "program": "/home/ianvb/Repos/SPOQ/bin/spoq_client",
         "args": ["-unsecure", "-target:127.0.0.1"],
         "stopAtEntry": false,
         "cwd": "${fileDirname}",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "gdb",
+        "setupCommands": [
+            {
+                "description": "Enable pretty-printing for gdb",
+                "text": "-enable-pretty-printing",
+                "ignoreFailures": true
+            },
+            {
+                "description": "Set Disassembly Flavor to Intel",
+                "text": "-gdb-set disassembly-flavor intel",
+                "ignoreFailures": true
+            }
+        ]
+    },
+    {
+        "name": "debug-server",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "/home/ianvb/Repos/SPOQ/bin/spoq_server",
+        "args": ["-cert_file:./certs/quic_certificate.pem", "-key_file:./certs/quic_private_key.pem"],
+        "stopAtEntry": false,
+        "cwd": "/home/ianvb/Repos/SPOQ/",
         "environment": [],
         "externalConsole": false,
         "MIMode": "gdb",
