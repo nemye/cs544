@@ -253,31 +253,28 @@ ServerLoadConfiguration(_In_ int argc,
 
   const char* Cert;
   const char* KeyFile;
+  const char* CaFile;
   if ((Cert = GetValue(argc, argv, "cert_file")) != NULL &&
-      (KeyFile = GetValue(argc, argv, "key_file")) != NULL) {
+      (KeyFile = GetValue(argc, argv, "key_file")) != NULL &&
+      (CaFile = GetValue(argc, argv, "ca_file")) != NULL) {
     Config.CertFile.CertificateFile = (char*)Cert;
     Config.CertFile.PrivateKeyFile = (char*)KeyFile;
     Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
     Config.CredConfig.CertificateFile = &Config.CertFile;
+    Config.CredConfig.CaCertificateFile = (char*)CaFile;
 
     // Enforce validation of the client upon connection
     Config.CredConfig.Flags |=
         QUIC_CREDENTIAL_FLAG_REQUIRE_CLIENT_AUTHENTICATION;
-
-    const char* CaFile = GetValue(argc, argv, "ca_file");
-    if (CaFile != NULL) {
-      Config.CredConfig.CaCertificateFile = (char*)CaFile;
-      Config.CredConfig.Flags |=
-          QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
-    }
-    Config.CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+    Config.CredConfig.Flags |=
+        QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
+    Config.CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_SET_CA_CERTIFICATE_FILE;
 
     std::cout << "Cert: " << Cert << "\n";
     std::cout << "Key : " << KeyFile << "\n";
     std::cout << "CA  : " << (CaFile ? CaFile : "none") << "\n";
   } else {
-    std::cout
-        << "Must specify ['cert_file' and 'key_file']!\n";
+    std::cout << "Must specify ['cert_file', 'key_file', and 'ca_file']!\n";
     return FALSE;
   }
 

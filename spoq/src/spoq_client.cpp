@@ -236,23 +236,22 @@ ClientLoadConfiguration(_In_ int argc,
   memset(&Config, 0, sizeof(Config));
   Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_NONE;
   Config.CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
-  // Config.CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+  
   const char* Cert;
   const char* KeyFile;
-
+  const char* CaFile;
   if ((Cert = GetValue(argc, argv, "cert_file")) != NULL &&
-      (KeyFile = GetValue(argc, argv, "key_file")) != NULL) {
+      (KeyFile = GetValue(argc, argv, "key_file")) != NULL &&
+      (CaFile = GetValue(argc, argv, "ca_file")) != NULL) {
     Config.CertFile.CertificateFile = (char*)Cert;
     Config.CertFile.PrivateKeyFile = (char*)KeyFile;
     Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
     Config.CredConfig.CertificateFile = &Config.CertFile;
+    Config.CredConfig.CaCertificateFile = (char*)CaFile;
 
-    const char* CaFile = GetValue(argc, argv, "ca_file");
-    if (CaFile != NULL) {
-      Config.CredConfig.CaCertificateFile = (char*)CaFile;
-      Config.CredConfig.Flags |=
-          QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
-    }
+    Config.CredConfig.Flags |=
+        QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
+    Config.CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_SET_CA_CERTIFICATE_FILE;
 
     std::cout << "Cert: " << Cert << "\n";
     std::cout << "Key : " << KeyFile << "\n";
