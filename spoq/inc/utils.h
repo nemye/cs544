@@ -16,6 +16,9 @@ README.MD at the top level for build and run instructions.
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <cstdint>
+#include <iostream>
+
 #include "msquic.h"
 
 //
@@ -151,38 +154,131 @@ void WriteSslKeyLogFile(_In_z_ const char* FileName,
 }
 
 const char* QuicStreamEventTypeToString(QUIC_STREAM_EVENT_TYPE type) {
-    switch (type) {
-        case QUIC_STREAM_EVENT_START_COMPLETE: return "START_COMPLETE";
-        case QUIC_STREAM_EVENT_RECEIVE: return "RECEIVE";
-        case QUIC_STREAM_EVENT_SEND_COMPLETE: return "SEND_COMPLETE";
-        case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN: return "PEER_SEND_SHUTDOWN";
-        case QUIC_STREAM_EVENT_PEER_SEND_ABORTED: return "PEER_SEND_ABORTED";
-        case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED: return "PEER_RECEIVE_ABORTED";
-        case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE: return "SEND_SHUTDOWN_COMPLETE";
-        case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE: return "SHUTDOWN_COMPLETE";
-        case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE: return "IDEAL_SEND_BUFFER_SIZE";
-        default: return "UNKNOWN_EVENT";
-    }
+  switch (type) {
+    case QUIC_STREAM_EVENT_START_COMPLETE:
+      return "START_COMPLETE";
+    case QUIC_STREAM_EVENT_RECEIVE:
+      return "RECEIVE";
+    case QUIC_STREAM_EVENT_SEND_COMPLETE:
+      return "SEND_COMPLETE";
+    case QUIC_STREAM_EVENT_PEER_SEND_SHUTDOWN:
+      return "PEER_SEND_SHUTDOWN";
+    case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
+      return "PEER_SEND_ABORTED";
+    case QUIC_STREAM_EVENT_PEER_RECEIVE_ABORTED:
+      return "PEER_RECEIVE_ABORTED";
+    case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
+      return "SEND_SHUTDOWN_COMPLETE";
+    case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
+      return "SHUTDOWN_COMPLETE";
+    case QUIC_STREAM_EVENT_IDEAL_SEND_BUFFER_SIZE:
+      return "IDEAL_SEND_BUFFER_SIZE";
+    default:
+      return "UNKNOWN_EVENT";
+  }
 }
 
 const char* QuicConnectionEventTypeToString(QUIC_CONNECTION_EVENT_TYPE type) {
-    switch (type) {
-        case QUIC_CONNECTION_EVENT_CONNECTED: return "CONNECTED";
-        case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT: return "SHUTDOWN_INITIATED_BY_TRANSPORT";
-        case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER: return "SHUTDOWN_INITIATED_BY_PEER";
-        case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE: return "SHUTDOWN_COMPLETE";
-        case QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED: return "LOCAL_ADDRESS_CHANGED";
-        case QUIC_CONNECTION_EVENT_PEER_ADDRESS_CHANGED: return "PEER_ADDRESS_CHANGED";
-        case QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED: return "PEER_STREAM_STARTED";
-        case QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE: return "STREAMS_AVAILABLE";
-        case QUIC_CONNECTION_EVENT_PEER_NEEDS_STREAMS: return "PEER_NEEDS_STREAMS";
-        case QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED: return "IDEAL_PROCESSOR_CHANGED";
-        case QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED: return "DATAGRAM_STATE_CHANGED";
-        case QUIC_CONNECTION_EVENT_DATAGRAM_RECEIVED: return "DATAGRAM_RECEIVED";
-        case QUIC_CONNECTION_EVENT_DATAGRAM_SEND_STATE_CHANGED: return "DATAGRAM_SEND_STATE_CHANGED";
-        case QUIC_CONNECTION_EVENT_RESUMED: return "RESUMED";
-        case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED: return "RESUMPTION_TICKET_RECEIVED";
-        case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED: return "PEER_CERTIFICATE_RECEIVED";
-        default: return "UNKNOWN_EVENT";
+  switch (type) {
+    case QUIC_CONNECTION_EVENT_CONNECTED:
+      return "CONNECTED";
+    case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_TRANSPORT:
+      return "SHUTDOWN_INITIATED_BY_TRANSPORT";
+    case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
+      return "SHUTDOWN_INITIATED_BY_PEER";
+    case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
+      return "SHUTDOWN_COMPLETE";
+    case QUIC_CONNECTION_EVENT_LOCAL_ADDRESS_CHANGED:
+      return "LOCAL_ADDRESS_CHANGED";
+    case QUIC_CONNECTION_EVENT_PEER_ADDRESS_CHANGED:
+      return "PEER_ADDRESS_CHANGED";
+    case QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED:
+      return "PEER_STREAM_STARTED";
+    case QUIC_CONNECTION_EVENT_STREAMS_AVAILABLE:
+      return "STREAMS_AVAILABLE";
+    case QUIC_CONNECTION_EVENT_PEER_NEEDS_STREAMS:
+      return "PEER_NEEDS_STREAMS";
+    case QUIC_CONNECTION_EVENT_IDEAL_PROCESSOR_CHANGED:
+      return "IDEAL_PROCESSOR_CHANGED";
+    case QUIC_CONNECTION_EVENT_DATAGRAM_STATE_CHANGED:
+      return "DATAGRAM_STATE_CHANGED";
+    case QUIC_CONNECTION_EVENT_DATAGRAM_RECEIVED:
+      return "DATAGRAM_RECEIVED";
+    case QUIC_CONNECTION_EVENT_DATAGRAM_SEND_STATE_CHANGED:
+      return "DATAGRAM_SEND_STATE_CHANGED";
+    case QUIC_CONNECTION_EVENT_RESUMED:
+      return "RESUMED";
+    case QUIC_CONNECTION_EVENT_RESUMPTION_TICKET_RECEIVED:
+      return "RESUMPTION_TICKET_RECEIVED";
+    case QUIC_CONNECTION_EVENT_PEER_CERTIFICATE_RECEIVED:
+      return "PEER_CERTIFICATE_RECEIVED";
+    default:
+      return "UNKNOWN_EVENT";
+  }
+}
+
+void PrintQuicErrorCodeInfo(uint64_t errorCode) {
+  std::cout << "QUIC Error Code: 0x" << std::hex << errorCode << std::dec
+            << std::endl;
+
+  if (errorCode >= 0x100 && errorCode < 0x200) {
+    uint8_t tlsAlert = static_cast<uint8_t>(errorCode - 0x100);
+    std::cout << "TLS Alert Code: " << static_cast<int>(tlsAlert)
+              << std::endl;
+
+    switch (tlsAlert) {
+      case 40:
+        std::cout << "     handshake_failure\n";
+        break;
+      case 42:
+        std::cout << "     bad_certificate\n";
+        break;
+      case 43:
+        std::cout << "     unsupported_certificate\n";
+        break;
+      case 44:
+        std::cout << "     certificate_revoked\n";
+        break;
+      case 45:
+        std::cout << "     certificate_expired\n";
+        break;
+      case 46:
+        std::cout << "     certificate_unknown\n";
+        break;
+      case 48:
+        std::cout << "     unknown_ca\n";
+        break;
+      case 51:
+        std::cout << "     decode_error\n";
+        break;
+      case 70:
+        std::cout << "     protocol_version\n";
+        break;
+      default:
+        std::cout << "     (Unknown TLS alert code)\n";
+        break;
     }
+
+  } else if (errorCode <= 0x1f) {
+    std::cout << "QUIC Transport Error Code: ";
+    switch (errorCode) {
+      case 0x00:
+        std::cout << "NO_ERROR\n";
+        break;
+      case 0x01:
+        std::cout << "INTERNAL_ERROR\n";
+        break;
+      case 0x06:
+        std::cout << "CRYPTO_ERROR\n";
+        break;
+      case 0x0D:
+        std::cout << "PROTOCOL_VIOLATION\n";
+        break;
+      default:
+        std::cout << "(Other transport error)\n";
+        break;
+    }
+  } else {
+    std::cout << "Possibly application-defined error\n";
+  }
 }

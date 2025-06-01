@@ -249,10 +249,14 @@ ClientLoadConfiguration(_In_ int argc,
 
     const char* CaFile = GetValue(argc, argv, "ca_file");
     if (CaFile != NULL) {
-      Config.CredConfig.CaCertificateFile = CaFile;
+      Config.CredConfig.CaCertificateFile = (char*)CaFile;
       Config.CredConfig.Flags |=
           QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
     }
+
+    std::cout << "Cert: " << Cert << "\n";
+    std::cout << "Key : " << KeyFile << "\n";
+    std::cout << "CA  : " << (CaFile ? CaFile : "none") << "\n";
   } else {
     std::cout << "Must specify ['cert_file' and 'key_file' (and "
                  "optionally 'password')]!\n";
@@ -284,8 +288,7 @@ ClientLoadConfiguration(_In_ int argc,
 
 // Runs the client side of the protocol.
 void RunClient(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
-  // Load the client configuration based on the "unsecure" command line
-  // option.
+  // Load the client configuration
   if (!ClientLoadConfiguration(argc, argv)) {
     return;
   }

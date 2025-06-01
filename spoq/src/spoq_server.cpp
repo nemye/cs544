@@ -171,6 +171,8 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
                   << "] Connection event: Shut down by transport, 0x"
                   << std::hex << Event->SHUTDOWN_INITIATED_BY_TRANSPORT.Status
                   << std::dec << "\n";
+        PrintQuicErrorCodeInfo(
+            Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
       }
       break;
     case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
@@ -264,15 +266,18 @@ ServerLoadConfiguration(_In_ int argc,
 
     const char* CaFile = GetValue(argc, argv, "ca_file");
     if (CaFile != NULL) {
-      Config.CredConfig.CaCertificateFile = CaFile;
+      Config.CredConfig.CaCertificateFile = (char*)CaFile;
       Config.CredConfig.Flags |=
           QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
     }
     Config.CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+
+    std::cout << "Cert: " << Cert << "\n";
+    std::cout << "Key : " << KeyFile << "\n";
+    std::cout << "CA  : " << (CaFile ? CaFile : "none") << "\n";
   } else {
     std::cout
-        << "Must specify ['-cert_hash'] or ['cert_file' and 'key_file' (and "
-           "optionally 'password')]!\n";
+        << "Must specify ['cert_file' and 'key_file']!\n";
     return FALSE;
   }
 
