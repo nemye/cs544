@@ -9,7 +9,7 @@
         "type": "cppdbg",
         "request": "launch",
         "program": "/home/ianvb/Repos/SPOQ/bin/spoq_client",
-        "args": ["-unsecure", "-target:127.0.0.1"],
+        "args": ["-cert_file:/home/ianvb/Repos/SPOQ/certs/client_cert.pem", "-key_file:/home/ianvb/Repos/SPOQ/certs/client_key.pem", "-ca_file:/home/ianvb/Repos/SPOQ/certs/ca_cert.pem", "-target:127.0.0.1"],
         "stopAtEntry": false,
         "cwd": "${fileDirname}",
         "environment": [],

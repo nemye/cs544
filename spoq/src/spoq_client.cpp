@@ -234,30 +234,24 @@ ClientLoadConfiguration(_In_ int argc,
   // Configures a default client configuration
   QUIC_CREDENTIAL_CONFIG_HELPER Config;
   memset(&Config, 0, sizeof(Config));
+  Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_NONE;
+  Config.CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
+  // Config.CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
   const char* Cert;
   const char* KeyFile;
+
   if ((Cert = GetValue(argc, argv, "cert_file")) != NULL &&
       (KeyFile = GetValue(argc, argv, "key_file")) != NULL) {
-    // Loads the server's certificate from the file.
-    const char* Password = GetValue(argc, argv, "password");
-    if (Password != NULL) {
-      Config.CertFileProtected.CertificateFile = (char*)Cert;
-      Config.CertFileProtected.PrivateKeyFile = (char*)KeyFile;
-      Config.CertFileProtected.PrivateKeyPassword = (char*)Password;
-      Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE_PROTECTED;
-      Config.CredConfig.CertificateFileProtected = &Config.CertFileProtected;
-    } else {
-      Config.CertFile.CertificateFile = (char*)Cert;
-      Config.CertFile.PrivateKeyFile = (char*)KeyFile;
-      Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
-      Config.CredConfig.CertificateFile = &Config.CertFile;
-    }
+    Config.CertFile.CertificateFile = (char*)Cert;
+    Config.CertFile.PrivateKeyFile = (char*)KeyFile;
+    Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
+    Config.CredConfig.CertificateFile = &Config.CertFile;
 
-    Config.CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
     const char* CaFile = GetValue(argc, argv, "ca_file");
     if (CaFile != NULL) {
       Config.CredConfig.CaCertificateFile = CaFile;
-      Config.CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
+      Config.CredConfig.Flags |=
+          QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
     }
   } else {
     std::cout << "Must specify ['cert_file' and 'key_file' (and "

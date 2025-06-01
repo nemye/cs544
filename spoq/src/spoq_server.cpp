@@ -253,20 +253,11 @@ ServerLoadConfiguration(_In_ int argc,
   const char* KeyFile;
   if ((Cert = GetValue(argc, argv, "cert_file")) != NULL &&
       (KeyFile = GetValue(argc, argv, "key_file")) != NULL) {
-    // Loads the server's certificate from the file.
-    const char* Password = GetValue(argc, argv, "password");
-    if (Password != NULL) {
-      Config.CertFileProtected.CertificateFile = (char*)Cert;
-      Config.CertFileProtected.PrivateKeyFile = (char*)KeyFile;
-      Config.CertFileProtected.PrivateKeyPassword = (char*)Password;
-      Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE_PROTECTED;
-      Config.CredConfig.CertificateFileProtected = &Config.CertFileProtected;
-    } else {
-      Config.CertFile.CertificateFile = (char*)Cert;
-      Config.CertFile.PrivateKeyFile = (char*)KeyFile;
-      Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
-      Config.CredConfig.CertificateFile = &Config.CertFile;
-    }
+    Config.CertFile.CertificateFile = (char*)Cert;
+    Config.CertFile.PrivateKeyFile = (char*)KeyFile;
+    Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
+    Config.CredConfig.CertificateFile = &Config.CertFile;
+
     // Enforce validation of the client upon connection
     Config.CredConfig.Flags |=
         QUIC_CREDENTIAL_FLAG_REQUIRE_CLIENT_AUTHENTICATION;
@@ -278,7 +269,6 @@ ServerLoadConfiguration(_In_ int argc,
           QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
     }
     Config.CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
-
   } else {
     std::cout
         << "Must specify ['-cert_hash'] or ['cert_file' and 'key_file' (and "
