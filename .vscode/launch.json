@@ -33,7 +33,7 @@
         "type": "cppdbg",
         "request": "launch",
         "program": "/home/ianvb/Repos/SPOQ/bin/spoq_server",
-        "args": ["-cert_file:./certs/quic_certificate.pem", "-key_file:./certs/quic_private_key.pem"],
+        "args": ["-cert_file:./certs/server_cert.pem", "-key_file:./certs/server_key.pem", "-ca_file:./certs/ca_cert.pem"],
         "stopAtEntry": false,
         "cwd": "/home/ianvb/Repos/SPOQ/",
         "environment": [],

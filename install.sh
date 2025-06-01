@@ -16,6 +16,5 @@ cd ..
 
 # generate certs
 echo $(pwd)
-cd certs
-./gencert.sh
+./certs/gencert.sh
 cd ..

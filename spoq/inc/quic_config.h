@@ -34,3 +34,12 @@ const uint32_t SendBufferLength = 100;
 // functions called by the app to interact with MsQuic.
 //
 const QUIC_API_TABLE* MsQuic;
+
+typedef struct QUIC_CREDENTIAL_CONFIG_HELPER {
+  QUIC_CREDENTIAL_CONFIG CredConfig;
+  union {
+    QUIC_CERTIFICATE_HASH CertHash;
+    QUIC_CERTIFICATE_FILE CertFile;
+    QUIC_CERTIFICATE_FILE_PROTECTED CertFileProtected;
+  };
+} QUIC_CREDENTIAL_CONFIG_HELPER;

@@ -226,16 +226,6 @@ _IRQL_requires_max_(PASSIVE_LEVEL)
   return Status;
 }
 
-typedef struct QUIC_CREDENTIAL_CONFIG_HELPER {
-  QUIC_CREDENTIAL_CONFIG CredConfig;
-  union {
-    QUIC_CERTIFICATE_HASH CertHash;
-    QUIC_CERTIFICATE_HASH_STORE CertHashStore;
-    QUIC_CERTIFICATE_FILE CertFile;
-    QUIC_CERTIFICATE_FILE_PROTECTED CertFileProtected;
-  };
-} QUIC_CREDENTIAL_CONFIG_HELPER;
-
 // Helper function to load a server configuration. Uses the command line
 // arguments to load the credential part of the configuration.
 BOOLEAN
@@ -257,23 +247,12 @@ ServerLoadConfiguration(_In_ int argc,
 
   QUIC_CREDENTIAL_CONFIG_HELPER Config;
   memset(&Config, 0, sizeof(Config));
-  Config.CredConfig.Flags = QUIC_CREDENTIAL_FLAG_NONE;
+  Config.CredConfig.Flags = QUIC_CREDENTIAL_FLAG_USE_PORTABLE_CERTIFICATES;
 
   const char* Cert;
   const char* KeyFile;
-  if ((Cert = GetValue(argc, argv, "cert_hash")) != NULL) {
-    // Load the server's certificate from the default certificate store,
-    // using the provided certificate hash.
-    uint32_t CertHashLen = DecodeHexBuffer(
-        Cert, sizeof(Config.CertHash.ShaHash), Config.CertHash.ShaHash);
-    if (CertHashLen != sizeof(Config.CertHash.ShaHash)) {
-      return FALSE;
-    }
-    Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_HASH;
-    Config.CredConfig.CertificateHash = &Config.CertHash;
-
-  } else if ((Cert = GetValue(argc, argv, "cert_file")) != NULL &&
-             (KeyFile = GetValue(argc, argv, "key_file")) != NULL) {
+  if ((Cert = GetValue(argc, argv, "cert_file")) != NULL &&
+      (KeyFile = GetValue(argc, argv, "key_file")) != NULL) {
     // Loads the server's certificate from the file.
     const char* Password = GetValue(argc, argv, "password");
     if (Password != NULL) {
@@ -288,6 +267,17 @@ ServerLoadConfiguration(_In_ int argc,
       Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
       Config.CredConfig.CertificateFile = &Config.CertFile;
     }
+    // Enforce validation of the client upon connection
+    Config.CredConfig.Flags |=
+        QUIC_CREDENTIAL_FLAG_REQUIRE_CLIENT_AUTHENTICATION;
+
+    const char* CaFile = GetValue(argc, argv, "ca_file");
+    if (CaFile != NULL) {
+      Config.CredConfig.CaCertificateFile = CaFile;
+      Config.CredConfig.Flags |=
+          QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
+    }
+    Config.CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
 
   } else {
     std::cout

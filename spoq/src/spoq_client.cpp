@@ -204,7 +204,8 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
            i < Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicketLength; i++) {
         std::cout << std::hex << std::setw(2) << std::setfill('0')
                   << static_cast<int>(
-                         Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket[i]) << std::dec;
+                         Event->RESUMPTION_TICKET_RECEIVED.ResumptionTicket[i])
+                  << std::dec;
       }
       std::cout << "\n";
       break;
@@ -223,20 +224,45 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
 
 // Helper function to load a client configuration.
 BOOLEAN
-ClientLoadConfiguration(BOOLEAN Unsecure) {
+ClientLoadConfiguration(_In_ int argc,
+                        _In_reads_(argc) _Null_terminated_ char* argv[]) {
   QUIC_SETTINGS Settings = {0};
   // Configures the client's idle timeout.
   Settings.IdleTimeoutMs = IdleTimeoutMs;
   Settings.IsSet.IdleTimeoutMs = TRUE;
 
-  // Configures a default client configuration, optionally disabling
-  // server certificate validation.
-  QUIC_CREDENTIAL_CONFIG CredConfig;
-  memset(&CredConfig, 0, sizeof(CredConfig));
-  CredConfig.Type = QUIC_CREDENTIAL_TYPE_NONE;
-  CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
-  if (Unsecure) {
-    CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_NO_CERTIFICATE_VALIDATION;
+  // Configures a default client configuration
+  QUIC_CREDENTIAL_CONFIG_HELPER Config;
+  memset(&Config, 0, sizeof(Config));
+  const char* Cert;
+  const char* KeyFile;
+  if ((Cert = GetValue(argc, argv, "cert_file")) != NULL &&
+      (KeyFile = GetValue(argc, argv, "key_file")) != NULL) {
+    // Loads the server's certificate from the file.
+    const char* Password = GetValue(argc, argv, "password");
+    if (Password != NULL) {
+      Config.CertFileProtected.CertificateFile = (char*)Cert;
+      Config.CertFileProtected.PrivateKeyFile = (char*)KeyFile;
+      Config.CertFileProtected.PrivateKeyPassword = (char*)Password;
+      Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE_PROTECTED;
+      Config.CredConfig.CertificateFileProtected = &Config.CertFileProtected;
+    } else {
+      Config.CertFile.CertificateFile = (char*)Cert;
+      Config.CertFile.PrivateKeyFile = (char*)KeyFile;
+      Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_CERTIFICATE_FILE;
+      Config.CredConfig.CertificateFile = &Config.CertFile;
+    }
+
+    Config.CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
+    const char* CaFile = GetValue(argc, argv, "ca_file");
+    if (CaFile != NULL) {
+      Config.CredConfig.CaCertificateFile = CaFile;
+      Config.CredConfig.Flags |= QUIC_CREDENTIAL_FLAG_INDICATE_CERTIFICATE_RECEIVED;
+    }
+  } else {
+    std::cout << "Must specify ['cert_file' and 'key_file' (and "
+                 "optionally 'password')]!\n";
+    return FALSE;
   }
 
   // Allocate/initialize the configuration object, with the configured ALPN
@@ -252,8 +278,8 @@ ClientLoadConfiguration(BOOLEAN Unsecure) {
 
   // Loads the TLS credential part of the configuration. This is required even
   // on client side, to indicate if a certificate is required or not.
-  if (QUIC_FAILED(Status = MsQuic->ConfigurationLoadCredential(Configuration,
-                                                               &CredConfig))) {
+  if (QUIC_FAILED(Status = MsQuic->ConfigurationLoadCredential(
+                      Configuration, &Config.CredConfig))) {
     std::cout << "ConfigurationLoadCredential failed, 0x" << std::hex << Status
               << std::dec << "!\n";
     return FALSE;
@@ -264,8 +290,9 @@ ClientLoadConfiguration(BOOLEAN Unsecure) {
 
 // Runs the client side of the protocol.
 void RunClient(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
-  // Load the client configuration based on the "unsecure" command line option.
-  if (!ClientLoadConfiguration(GetFlag(argc, argv, "unsecure"))) {
+  // Load the client configuration based on the "unsecure" command line
+  // option.
+  if (!ClientLoadConfiguration(argc, argv)) {
     return;
   }
 

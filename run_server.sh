@@ -1,2 +1,2 @@
 #!/bin/bash
-./bin/spoq_server -cert_file:./certs/quic_certificate.pem -key_file:./certs/quic_private_key.pem
+./bin/spoq_server -cert_file:./certs/server_cert.pem -key_file:./certs/server_key.pem -ca_file:./certs/ca_cert.pem
