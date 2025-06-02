@@ -5,7 +5,7 @@
 
 Abstract:
 
-    Demo client application for the Sensor Protocol Over QUIC (SPQO). See the
+    Demo client application for the Sensor Protocol Over QUIC (SPOQ). See the
 README.MD at the top level for build and run instructions.
 
     Built upon msquic "sample" application.
