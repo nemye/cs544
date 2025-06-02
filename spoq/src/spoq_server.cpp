@@ -50,13 +50,11 @@ constexpr uint32_t MAX_MESSAGE_COUNT = 100;
 
 void PrintUsage() {
   std::cout << "\n"
-               "quicsample runs a simple client or server.\n"
+               "spoq_server runs a simple SPOQ server.\n"
                "\n"
                "Usage:\n"
                "\n"
-               "  quicsample.exe -server -cert_hash:<...>\n"
-               "  quicsample.exe -server -cert_file:<...> -key_file:<...> "
-               "[-password:<...>]\n";
+               " spoq_server -cert_file:<...> -key_file:<...> -ca_file:<...>\n";
 }
 
 // Allocates and sends some NDJSON data over a QUIC stream.

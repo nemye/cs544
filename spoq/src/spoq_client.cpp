@@ -55,14 +55,12 @@ SPOQ_STATE state = SPOQ_STATE::UNKNOWN;
 const char* SslKeyLogEnvVar = "SSLKEYLOGFILE";
 
 void PrintUsage() {
-  std::cout
-      << "\n"
-         "quicsample runs a simple client.\n"
-         "\n"
-         "Usage:\n"
-         "\n"
-         "  quicsample.exe -client -unsecure -target:{IPAddress|Hostname} "
-         "[-ticket:<ticket>]\n";
+  std::cout << "\n"
+               "spoq_client runs a simple SPOQ client.\n"
+               "\n"
+               "Usage:\n"
+               "\n"
+               " spoq_server -cert_file:<...> -key_file:<...> -ca_file:<...> -target:{IPAddress|Hostname}\n";
 }
 
 // Send the response to the server
