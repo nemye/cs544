@@ -20,6 +20,7 @@ README.MD at the top level for build and run instructions.
 
 #include "msquic.h"
 #include "quic_config.h"
+#include "spoq.h"
 #include "utils.h"
 
 // The (optional) registration configuration for the app. This sets a name for
@@ -41,6 +42,9 @@ HQUIC Registration;
 // QUIC layer settings.
 HQUIC Configuration;
 
+// The server SPOQ state
+SPOQ_STATE state = SPOQ_STATE::INIT;
+
 uint32_t MessageCount = 0;
 constexpr uint32_t MAX_MESSAGE_COUNT = 100;
 
@@ -57,6 +61,7 @@ void PrintUsage() {
 
 // Allocates and sends some NDJSON data over a QUIC stream.
 void ServerSend(_In_ HQUIC Stream) {
+  setSpoqState(state, SPOQ_STATE::SENDING);
   while (MessageCount < MAX_MESSAGE_COUNT) {
     // Variable-size JSON: simulate size variation with random padding
     const int padding = rand() % 20;  // random 0–19 extra spaces
@@ -91,6 +96,7 @@ void ServerSend(_In_ HQUIC Stream) {
       std::cout << "[" << Stream << "] StreamSend failed at message "
                 << MessageCount << ", " << Status << "!\n ";
       free(SendBufferRaw);
+      setSpoqState(state, SPOQ_STATE::ERROR);
       MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
       return;
     }
@@ -132,11 +138,17 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
     case QUIC_STREAM_EVENT_PEER_SEND_ABORTED:
       // The peer aborted its send direction of the stream.
       MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+      setSpoqState(state, SPOQ_STATE::ERROR);
       break;
+    case QUIC_STREAM_EVENT_SEND_SHUTDOWN_COMPLETE:
+      // Both directions of the stream have been shut down and MsQuic is done
+      // with the stream. It can now be safely cleaned up.
+      setSpoqState(state, SPOQ_STATE::WAITING);
     case QUIC_STREAM_EVENT_SHUTDOWN_COMPLETE:
       // Both directions of the stream have been shut down and MsQuic is done
       // with the stream. It can now be safely cleaned up.
       MsQuic->StreamClose(Stream);
+      setSpoqState(state, SPOQ_STATE::CLOSED);
       break;
     default:
       break;
@@ -155,6 +167,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
   switch (Event->Type) {
     case QUIC_CONNECTION_EVENT_CONNECTED:
       // The handshake has completed for the connection.
+      setSpoqState(state, SPOQ_STATE::ESTABLISHED);
       MsQuic->ConnectionSendResumptionTicket(
           Connection, QUIC_SEND_RESUMPTION_FLAG_NONE, 0, NULL);
       break;
@@ -166,6 +179,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
           QUIC_STATUS_CONNECTION_IDLE) {
         std::cout << "[" << Connection
                   << "] Connection event: Successfully shut down on idle.\n";
+        setSpoqState(state, SPOQ_STATE::CLOSED);
       } else {
         std::cout << "[" << Connection
                   << "] Connection event: Shut down by transport, 0x"
@@ -173,6 +187,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
                   << std::dec << "\n";
         PrintQuicErrorCodeInfo(
             Event->SHUTDOWN_INITIATED_BY_TRANSPORT.ErrorCode);
+        setSpoqState(state, SPOQ_STATE::ERROR);
       }
       break;
     case QUIC_CONNECTION_EVENT_SHUTDOWN_INITIATED_BY_PEER:
@@ -182,11 +197,13 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
                 << (unsigned long long)
                        Event->SHUTDOWN_INITIATED_BY_PEER.ErrorCode
                 << std::dec << "\n";
+      setSpoqState(state, SPOQ_STATE::ERROR);
       break;
     case QUIC_CONNECTION_EVENT_SHUTDOWN_COMPLETE:
       // The connection has completed the shutdown process and is ready to be
       // safely cleaned up.
       MsQuic->ConnectionClose(Connection);
+      setSpoqState(state, SPOQ_STATE::CLOSED);
       break;
     case QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED:
       // The peer has started/created a new stream. Begin sending data
@@ -284,6 +301,7 @@ ServerLoadConfiguration(_In_ int argc,
   if (QUIC_FAILED(Status = MsQuic->ConfigurationOpen(
                       Registration, &Alpn, 1, &Settings, sizeof(Settings), NULL,
                       &Configuration))) {
+    setSpoqState(state, SPOQ_STATE::ERROR);
     std::cout << "ConfigurationOpen failed, 0x" << std::hex << Status
               << std::dec << " !\n ";
     return FALSE;
@@ -292,6 +310,7 @@ ServerLoadConfiguration(_In_ int argc,
   // Loads the TLS credential part of the configuration.
   if (QUIC_FAILED(Status = MsQuic->ConfigurationLoadCredential(
                       Configuration, &Config.CredConfig))) {
+    setSpoqState(state, SPOQ_STATE::ERROR);
     std::cout << "ConfigurationLoadCredential failed, 0x" << std::hex << Status
               << std::dec << "!\n";
     return FALSE;
@@ -325,6 +344,7 @@ void RunServer(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
   // Create/allocate a new listener object.
   if (QUIC_FAILED(Status = MsQuic->ListenerOpen(
                       Registration, ServerListenerCallback, NULL, &Listener))) {
+    setSpoqState(state, SPOQ_STATE::ERROR);
     std::cout << "ListenerOpen failed, 0x" << std::hex << Status << std::dec
               << "!\n";
     shutdown();
@@ -333,6 +353,7 @@ void RunServer(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
   // Starts listening for incoming connections.
   if (QUIC_FAILED(Status =
                       MsQuic->ListenerStart(Listener, &Alpn, 1, &Address))) {
+    setSpoqState(state, SPOQ_STATE::ERROR);
     std::cout << "ListenerStart failed, 0x" << std::hex << Status << std::dec
               << "!\n";
     shutdown();
@@ -340,13 +361,15 @@ void RunServer(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
 
   // Continue listening for connections until the Enter key is pressed.
   std::cout << "Press Enter to exit.\n\n";
-  (void)getchar();
+  setSpoqState(state, SPOQ_STATE::WAITING);
+  std::cin.get();
 
   shutdown();
 }
 
 int QUIC_MAIN_EXPORT main(_In_ int argc,
                           _In_reads_(argc) _Null_terminated_ char* argv[]) {
+  setSpoqState(state, SPOQ_STATE::INIT);
   QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
 
   auto shutdown = [&]() {
@@ -360,11 +383,13 @@ int QUIC_MAIN_EXPORT main(_In_ int argc,
         MsQuic->RegistrationClose(Registration);
       }
       MsQuicClose(MsQuic);
+      setSpoqState(state, SPOQ_STATE::CLOSED);
     }
   };
 
   // Open a handle to the library and get the API function table.
   if (QUIC_FAILED(Status = MsQuicOpen2(&MsQuic))) {
+    setSpoqState(state, SPOQ_STATE::ERROR);
     std::cout << "MsQuicOpen2 failed, 0x" << std::hex << Status << std::dec
               << "!\n";
     shutdown();
@@ -374,6 +399,7 @@ int QUIC_MAIN_EXPORT main(_In_ int argc,
   // Create a registration for the app's connections.
   if (QUIC_FAILED(Status =
                       MsQuic->RegistrationOpen(&RegConfig, &Registration))) {
+    setSpoqState(state, SPOQ_STATE::ERROR);
     std::cout << "RegistrationOpen failed, 0x" << std::hex << Status << std::dec
               << "!\n";
     shutdown();

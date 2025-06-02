@@ -21,6 +21,7 @@ README.MD at the top level for build and run instructions.
 
 #include "msquic.h"
 #include "quic_config.h"
+#include "spoq.h"
 #include "utils.h"
 
 // The (optional) registration configuration for the app. This sets a name for
@@ -45,6 +46,9 @@ HQUIC Configuration;
 // The struct to be filled with TLS secrets
 // for debugging packet captured with e.g. Wireshark.
 QUIC_TLS_SECRETS ClientSecrets = {0};
+
+// The client SPOQ state
+SPOQ_STATE state = SPOQ_STATE::INIT;
 
 // The name of the environment variable being
 // used to get the path to the ssl key log file.
@@ -78,6 +82,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
       free(Event->SEND_COMPLETE.ClientContext);
       break;
     case QUIC_STREAM_EVENT_RECEIVE: {
+      setSpoqState(state, SPOQ_STATE::RECEIVING);
       // Data was received from the peer on the stream.
       std::string buffer;
       // Append incoming data to the string buffer
@@ -127,6 +132,7 @@ void ClientOpenStream(_In_ HQUIC Connection) {
                                       ClientStreamCallback, NULL, &Stream))) {
     std::cout << "StreamOpen failed, 0x" << std::hex << Status << std::dec
               << "!\n";
+    setSpoqState(state, SPOQ_STATE::ERROR);
     MsQuic->ConnectionShutdown(Connection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE,
                                0);
   }
@@ -137,10 +143,13 @@ void ClientOpenStream(_In_ HQUIC Connection) {
                       Stream, QUIC_STREAM_START_FLAG_IMMEDIATE))) {
     std::cout << "StreamStart failed, 0x" << std::hex << Status << std::dec
               << "!\n";
+    setSpoqState(state, SPOQ_STATE::ERROR);
     MsQuic->StreamClose(Stream);
     MsQuic->ConnectionShutdown(Connection, QUIC_CONNECTION_SHUTDOWN_FLAG_NONE,
                                0);
   }
+
+  setSpoqState(state, SPOQ_STATE::ESTABLISHED);
 }
 
 // The clients's callback for connection events from MsQuic.
@@ -236,7 +245,7 @@ ClientLoadConfiguration(_In_ int argc,
   memset(&Config, 0, sizeof(Config));
   Config.CredConfig.Type = QUIC_CREDENTIAL_TYPE_NONE;
   Config.CredConfig.Flags = QUIC_CREDENTIAL_FLAG_CLIENT;
-  
+
   const char* Cert;
   const char* KeyFile;
   const char* CaFile;
@@ -270,6 +279,7 @@ ClientLoadConfiguration(_In_ int argc,
                       &Configuration))) {
     std::cout << "ConfigurationOpen failed, 0x" << std::hex << Status
               << std::dec << " !\n ";
+    setSpoqState(state, SPOQ_STATE::ERROR);
     return FALSE;
   }
 
@@ -279,6 +289,7 @@ ClientLoadConfiguration(_In_ int argc,
                       Configuration, &Config.CredConfig))) {
     std::cout << "ConfigurationLoadCredential failed, 0x" << std::hex << Status
               << std::dec << "!\n";
+    setSpoqState(state, SPOQ_STATE::ERROR);
     return FALSE;
   }
 
@@ -309,6 +320,7 @@ void RunClient(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
                                                   NULL, &Connection))) {
     std::cout << "ConnectionOpen failed, 0x" << std::hex << Status << std::dec
               << "!\n";
+    setSpoqState(state, SPOQ_STATE::ERROR);
   }
 
   if ((ResumptionTicketString = GetValue(argc, argv, "ticket")) != NULL) {
@@ -322,6 +334,7 @@ void RunClient(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
                         TicketLength, ResumptionTicket))) {
       std::cout << "SetParam(QUIC_PARAM_CONN_RESUMPTION_TICKET) failed, 0x"
                 << std::hex << Status << std::dec << "!\n";
+      setSpoqState(state, SPOQ_STATE::ERROR);
       shutdown();
     }
   }
@@ -350,6 +363,7 @@ void RunClient(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
                                                    Target, UdpPort))) {
     std::cout << "ConnectionStart failed, 0x" << std::hex << Status << std::dec
               << "!\n";
+    setSpoqState(state, SPOQ_STATE::ERROR);
     shutdown();
   }
 
@@ -358,6 +372,7 @@ void RunClient(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
 
 int QUIC_MAIN_EXPORT main(_In_ int argc,
                           _In_reads_(argc) _Null_terminated_ char* argv[]) {
+  setSpoqState(state, SPOQ_STATE::INIT);
   QUIC_STATUS Status = QUIC_STATUS_SUCCESS;
 
   auto shutdown = [&]() {
@@ -369,6 +384,7 @@ int QUIC_MAIN_EXPORT main(_In_ int argc,
         // This will block until all outstanding child objects have been
         // closed.
         MsQuic->RegistrationClose(Registration);
+        setSpoqState(state, SPOQ_STATE::CLOSED);
       }
       MsQuicClose(MsQuic);
     }
@@ -378,6 +394,7 @@ int QUIC_MAIN_EXPORT main(_In_ int argc,
   if (QUIC_FAILED(Status = MsQuicOpen2(&MsQuic))) {
     std::cout << "MsQuicOpen2 failed, 0x" << std::hex << Status << std::dec
               << "!\n";
+    setSpoqState(state, SPOQ_STATE::ERROR);
     shutdown();
     return (int)Status;
   }
@@ -387,6 +404,7 @@ int QUIC_MAIN_EXPORT main(_In_ int argc,
                       MsQuic->RegistrationOpen(&RegConfig, &Registration))) {
     std::cout << "RegistrationOpen failed, 0x" << std::hex << Status << std::dec
               << "!\n";
+    setSpoqState(state, SPOQ_STATE::ERROR);
     shutdown();
     return (int)Status;
   }
