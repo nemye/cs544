@@ -192,6 +192,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
         if (status == "0") {
           std::cout << "[" << Stream << "] Negotiation event: SUCCESS!\n";
           setSpoqState(state, SPOQ_STATE::ESTABLISHED);
+          ServerSend(Stream);
         } else {
           std::cout << "[" << Stream << "] Negotiation event: FAILED!\n";
           setSpoqState(state, SPOQ_STATE::ERROR);
@@ -263,7 +264,7 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
       // The connection has completed the shutdown process and is ready to be
       // safely cleaned up.
       MsQuic->ConnectionClose(Connection);
-      setSpoqState(state, SPOQ_STATE::CLOSED);
+      setSpoqState(state, SPOQ_STATE::WAITING);
       break;
     case QUIC_CONNECTION_EVENT_PEER_STREAM_STARTED:
       // The peer has started/created a new stream. Begin sending data
@@ -271,10 +272,6 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
                                  (void*)ServerStreamCallback, NULL);
       if (state == SPOQ_STATE::NEGOTIATE) {
         SendNegotiate(Event->PEER_STREAM_STARTED.Stream);
-      }
-
-      if (state == SPOQ_STATE::ESTABLISHED) {
-        ServerSend(Event->PEER_STREAM_STARTED.Stream);
       }
       break;
     case QUIC_CONNECTION_EVENT_RESUMED:
@@ -429,7 +426,7 @@ void RunServer(_In_ int argc, _In_reads_(argc) _Null_terminated_ char* argv[]) {
   std::cout << "Press Enter to exit.\n\n";
   setSpoqState(state, SPOQ_STATE::WAITING);
   std::cin.get();
-
+  
   shutdown();
 }
 
