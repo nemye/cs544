@@ -5,6 +5,7 @@ This C++ software package contains code for the implementation of the SPOQ proto
 ## Dependencies
 
 - CMake >= 3.16
+- msquic
 
 ## Compilers Tested
 
