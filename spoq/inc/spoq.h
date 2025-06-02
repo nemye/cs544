@@ -1,5 +1,6 @@
 #include <string>
 
+// With a proper JSON parsing setup, we would parse the messages into these PDUs
 struct SPOQ_HEADER {
   std::string version = {};
   std::string status = {};
@@ -12,6 +13,7 @@ struct SPOQ_PDU {
 };
 
 enum class SPOQ_STATE {
+  UNKNOWN,
   INIT,         // Initial state before anything is sent/received
   NEGOTIATE,    // Handshake in progress (e.g., client sends version negotiation
                 // and waits for server reply)

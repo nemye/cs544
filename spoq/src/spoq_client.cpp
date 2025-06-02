@@ -48,7 +48,7 @@ HQUIC Configuration;
 QUIC_TLS_SECRETS ClientSecrets = {0};
 
 // The client SPOQ state
-SPOQ_STATE state = SPOQ_STATE::INIT;
+SPOQ_STATE state = SPOQ_STATE::UNKNOWN;
 
 // The name of the environment variable being
 // used to get the path to the ssl key log file.
@@ -63,6 +63,44 @@ void PrintUsage() {
          "\n"
          "  quicsample.exe -client -unsecure -target:{IPAddress|Hostname} "
          "[-ticket:<ticket>]\n";
+}
+
+// Send the response to the server
+void SendNegotiate(_In_ HQUIC Stream, const bool success) {
+  // Allocate buffer: QUIC_BUFFER + payload
+  void* SendBufferRaw = malloc(sizeof(QUIC_BUFFER) + 64);
+  if (SendBufferRaw == NULL) {
+    std::cout << "SendBuffer allocation failed for client negotiation!\n";
+    MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+    return;
+  }
+
+  QUIC_BUFFER* SendBuffer = (QUIC_BUFFER*)SendBufferRaw;
+  SendBuffer->Buffer = (uint8_t*)SendBufferRaw + sizeof(QUIC_BUFFER);
+
+  // Write a sample version negotitation message
+  std::string success_str = success ? "0" : "1";
+  std::string neg_msg =
+      "{\"header\":{\"sensor_id\":\"1\",\"version\":\"1\",\"status\":\"" +
+      success_str + "\"}}";
+  int len = snprintf((char*)SendBuffer->Buffer, 64, "%s\n", neg_msg.c_str());
+  SendBuffer->Length = (uint32_t)len;
+
+  QUIC_SEND_FLAGS flags = QUIC_SEND_FLAG_START;
+
+  QUIC_STATUS Status =
+      MsQuic->StreamSend(Stream, SendBuffer, 1, flags, SendBufferRaw);
+  // Note SendBufferRaw is freed in QUIC_STREAM_EVENT_SEND_COMPLETE case
+
+  if (QUIC_FAILED(Status)) {
+    std::cout << "[" << Stream
+              << "] StreamSend failed to send negotation message - " << Status
+              << "!\n ";
+    free(SendBufferRaw);
+    setSpoqState(state, SPOQ_STATE::ERROR);
+    MsQuic->StreamShutdown(Stream, QUIC_STREAM_SHUTDOWN_FLAG_ABORT, 0);
+    return;
+  }
 }
 
 // The clients's callback for stream events from MsQuic.
@@ -82,23 +120,48 @@ _IRQL_requires_max_(DISPATCH_LEVEL)
       free(Event->SEND_COMPLETE.ClientContext);
       break;
     case QUIC_STREAM_EVENT_RECEIVE: {
-      setSpoqState(state, SPOQ_STATE::RECEIVING);
       // Data was received from the peer on the stream.
       std::string buffer;
+
       // Append incoming data to the string buffer
       for (uint32_t i = 0; i < Event->RECEIVE.BufferCount; ++i) {
         buffer.append(
             reinterpret_cast<const char*>(Event->RECEIVE.Buffers[i].Buffer),
             Event->RECEIVE.Buffers[i].Length);
       }
-      // Process full newline-delimited messages
-      size_t pos = 0;
-      while ((pos = buffer.find('\n')) != std::string::npos) {
-        std::string message = buffer.substr(0, pos);
-        buffer.erase(0, pos + 1);
-        // Print size in bytes and the message
-        std::cout << "[" << Stream << "] Stream event: Received message ("
-                  << message.size() << " bytes): " << message << '\n';
+
+      if (state == SPOQ_STATE::NEGOTIATE) {
+        // lazy parsing of the message to negotiate
+        // should integrate a proper json parsing library
+        size_t pos = 0;
+        std::string vstr = "\"version\":\"";
+        bool success = false;
+        if ((pos = buffer.find(vstr)) != std::string::npos) {
+          std::string version = buffer.substr(pos + vstr.length(), 1);
+          std::cout << "[" << Stream
+                    << "] Negotiation event: version = " << version << "\n";
+          success = (version == "1");
+          if (success) {
+            std::cout << "[" << Stream << "] Negotiation event: SUCCESS!\n";
+            setSpoqState(state, SPOQ_STATE::ESTABLISHED);
+          } else {
+            std::cout << "[" << Stream << "] Negotiation event: FAILED!\n";
+            setSpoqState(state, SPOQ_STATE::ERROR);
+          }
+        }
+        SendNegotiate(Stream, success);
+      } else {
+        setSpoqState(state, SPOQ_STATE::RECEIVING);
+
+        // Process full newline-delimited messages
+        size_t pos = 0;
+        while ((pos = buffer.find('\n')) != std::string::npos) {
+          std::string message = buffer.substr(0, pos);
+          buffer.erase(0, pos + 1);
+          // Print size in bytes and the message
+          std::cout << "[" << Stream << "] Stream event: Received message ("
+                    << message.size() << " bytes): " << message << '\n';
+        }
       }
       break;
     }
@@ -149,7 +212,7 @@ void ClientOpenStream(_In_ HQUIC Connection) {
                                0);
   }
 
-  setSpoqState(state, SPOQ_STATE::ESTABLISHED);
+  setSpoqState(state, SPOQ_STATE::NEGOTIATE);
 }
 
 // The clients's callback for connection events from MsQuic.
